@@ -28,4 +28,11 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  // Change Password (Authenticated)
+  changePassword: (data) =>
+    apiRequest('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

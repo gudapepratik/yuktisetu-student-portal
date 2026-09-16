@@ -1,475 +1,287 @@
 import React, { useState, useEffect } from 'react';
 import { drivesApi } from '../api/drives';
-import {
-  Briefcase,
-  Building2,
-  MapPin,
-  Calendar,
-  DollarSign,
-  Users,
-  Filter,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Clock,
-  X,
-  ExternalLink,
-  ArrowRight,
-  Download,
-  XCircle,
-  AlertTriangle,
-} from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { Modal } from '../components/Modal';
+import {
+  Briefcase, Building2, MapPin, CalendarClock, IndianRupee, Users,
+  CheckCircle2, XCircle, AlertTriangle, ExternalLink, Info, RefreshCw,
+} from 'lucide-react';
 
-const DRIVE_STATUS = {
-  OPEN: 'OPEN',
-  CLOSED: 'CLOSED',
-  UPCOMING: 'UPCOMING',
-  ONGOING: 'ONGOING',
+const TABS = [
+  { id: 'open', label: 'Open' },
+  { id: 'closed', label: 'Closed' },
+  { id: 'all', label: 'All' },
+];
+
+const STATUS_CONFIG = {
+  PUBLISHED: { label: 'Open', color: 'var(--success)', bg: 'var(--success-bg)', Icon: CheckCircle2 },
+  APPLICATIONS_CLOSED: { label: 'Applications closed', color: 'var(--text-muted)', bg: 'rgba(101,112,125,0.14)', Icon: XCircle },
+  IN_PROGRESS: { label: 'In progress', color: 'var(--warning)', bg: 'var(--warning-bg)', Icon: AlertTriangle },
+  COMPLETED: { label: 'Completed', color: 'var(--text-muted)', bg: 'rgba(101,112,125,0.14)', Icon: XCircle },
 };
 
-const DRIVE_TYPES = {
-  FULL_TIME: 'FULL_TIME',
-  INTERNSHIP: 'INTERNSHIP',
-  CONTRACT: 'CONTRACT',
+const APPLICATION_LABEL = {
+  APPLIED: 'Applied',
+  WITHDRAWN: 'Withdrawn',
+  IN_REVIEW: 'Under review',
+  SHORTLISTED: 'Shortlisted',
+  REJECTED: 'Not selected',
+  DISQUALIFIED: 'Disqualified',
+  OFFERED: 'Offered',
+  OFFER_ACCEPTED: 'Offer accepted',
+  OFFER_DECLINED: 'Offer declined',
 };
 
-const statusIcons = {
-  [DRIVE_STATUS.OPEN]: CheckCircle2,
-  [DRIVE_STATUS.CLOSED]: XCircle,
-  [DRIVE_STATUS.UPCOMING]: Clock,
-  [DRIVE_STATUS.ONGOING]: AlertTriangle,
+/**
+ * Turns a backend failure code into something a student can act on.
+ *
+ * The codes are stable and this wording is not, deliberately: the TnP can reword
+ * any of it without the backend changing, and an unrecognised code still renders
+ * rather than leaving the student with a blank reason.
+ */
+const FAILURE_TEXT = {
+  PROFILE_INCOMPLETE: 'Your profile is missing details the TnP requires.',
+  CGPA_BELOW_MIN: 'Your CGPA is below this drive’s minimum.',
+  SEMESTER_GPA_BELOW_MIN: 'One of your semester GPAs is below the minimum.',
+  TENTH_BELOW_MIN: 'Your 10th percentage is below the minimum.',
+  TWELFTH_BELOW_MIN: 'Your 12th percentage is below the minimum.',
+  DIPLOMA_BELOW_MIN: 'Your diploma percentage is below the minimum.',
+  TWELFTH_OR_DIPLOMA_BELOW_MIN: 'Neither your 12th nor your diploma percentage meets the minimum.',
+  ACTIVE_BACKLOGS_EXCEEDED: 'You have more active backlogs than this drive allows.',
+  TOTAL_BACKLOGS_EXCEEDED: 'You have more backlogs in total than this drive allows.',
+  GAP_YEARS_EXCEEDED: 'Your academic gap exceeds what this drive allows.',
+  COCUBES_BELOW_MIN: 'Your CoCubes score is below the minimum.',
+  LIVE_INTERNSHIP_HELD: 'You already hold an internship offer, so you cannot sit for another internship drive.',
+  ALREADY_PLACED: 'You are already placed, and this drive is not open to placed students.',
+  PLACED_UPLIFT_NOT_MET: 'This drive does not pay enough above your current offer to qualify.',
+  INTERN_UPLIFT_NOT_MET: 'This drive’s stipend does not clear the required uplift over your current internship.',
+  PENDING_OFFER_HELD: 'You are holding an offer you have not yet responded to.',
+  MAX_LIVE_OFFERS_REACHED: 'You already hold the maximum number of offers this drive allows.',
+  COOLING_OFF_ACTIVE: 'You accepted another offer too recently.',
+  ADMIN_DENIED: 'The TnP has not cleared you for this drive.',
+  ADMIN_DECISION_PENDING: 'The TnP still needs to review whether you may sit for this drive.',
+  NEEDS_REVIEW: 'Some of your details need to be checked by the TnP first.',
 };
 
-const statusConfig = {
-  [DRIVE_STATUS.OPEN]: { label: 'Open', color: 'var(--success)', bg: 'var(--success-bg)' },
-  [DRIVE_STATUS.CLOSED]: { label: 'Closed', color: 'var(--text-muted)', bg: 'rgba(101,112,125,0.14)' },
-  [DRIVE_STATUS.UPCOMING]: { label: 'Upcoming', color: 'var(--accent-blue)', bg: 'var(--accent-blue-glow)' },
-  [DRIVE_STATUS.ONGOING]: { label: 'Ongoing', color: 'var(--warning)', bg: 'var(--warning-bg)' },
-};
+function describeFailure(code) {
+  if (FAILURE_TEXT[code]) return FAILURE_TEXT[code];
+  if (code.startsWith('MISSING_DATA:')) {
+    return `Your profile has no value recorded for ${code.split(':')[1]}.`;
+  }
+  if (code.startsWith('CUSTOM:')) {
+    return `You do not meet a company-specific requirement (${code.split(':')[1]}).`;
+  }
+  return code;
+}
 
-const typeConfig = {
-  [DRIVE_TYPES.FULL_TIME]: { label: 'Full-time', color: 'var(--accent-teal)' },
-  [DRIVE_TYPES.INTERNSHIP]: { label: 'Internship', color: 'var(--accent-gold)' },
-  [DRIVE_TYPES.CONTRACT]: { label: 'Contract', color: 'var(--accent-purple)' },
-};
+function formatMoney(min, max) {
+  if (!min && !max) return null;
+  const lakh = (v) => `${(Number(v) / 100000).toFixed(1)}L`;
+  if (min && max && Number(min) !== Number(max)) return `₹${lakh(min)} – ₹${lakh(max)}`;
+  return `₹${lakh(max || min)}`;
+}
 
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/**
+ * The student's drive list.
+ *
+ * Only drives this student is eligible for are ever returned, so there is no
+ * client-side filtering of a global list — the server decides visibility, and a
+ * drive that is absent was never theirs to see.
+ *
+ * applyOpen comes from the server rather than being derived here: the deadline is
+ * enforced against the server clock, and a browser running minutes slow would
+ * otherwise render an enabled button whose every press fails.
+ */
 export function PlacementDrives() {
   const { toast } = useToast();
+
+  const [tab, setTab] = useState('open');
   const [drives, setDrives] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedDrive, setSelectedDrive] = useState(null);
-  const [applying, setApplying] = useState(null);
 
-  // Mock data for demo (replace with actual API call)
-  const mockDrives = [
-    {
-      id: 1,
-      title: 'Software Development Engineer',
-      company: { name: 'Google India', logo: null, website: 'https://google.com' },
-      type: DRIVE_TYPES.FULL_TIME,
-      status: DRIVE_STATUS.OPEN,
-      location: 'Bangalore, Karnataka',
-      ctc: '45 LPA',
-      stipend: null,
-      description: 'We are looking for passionate software engineers to join our team...',
-      eligibilityCriteria: 'B.Tech/B.E. in CS/IT/ECE, CGPA >= 7.0, No active backlogs',
-      skillsRequired: ['Java', 'Python', 'Go', 'Distributed Systems', 'System Design'],
-      applicationDeadline: '2026-09-15T23:59:59Z',
-      driveDate: '2026-09-20T09:00:00Z',
-      rounds: ['Online Assessment', 'Technical Interview 1', 'Technical Interview 2', 'Hiring Committee'],
-      applied: false,
-    },
-    {
-      id: 2,
-      title: 'Backend Engineering Intern',
-      company: { name: 'Microsoft', logo: null, website: 'https://microsoft.com' },
-      type: DRIVE_TYPES.INTERNSHIP,
-      status: DRIVE_STATUS.OPEN,
-      location: 'Hyderabad, Telangana',
-      ctc: null,
-      stipend: '1.25 Lakh/month',
-      description: 'Summer internship program for backend engineering...',
-      eligibilityCriteria: 'B.Tech 3rd year, CGPA >= 8.0, Strong in Java/C#',
-      skillsRequired: ['C#', '.NET', 'Azure', 'SQL', 'REST APIs'],
-      applicationDeadline: '2026-09-10T23:59:59Z',
-      driveDate: '2026-09-25T10:00:00Z',
-      rounds: ['Online Coding Test', 'Technical Interview', 'HR Round'],
-      applied: false,
-    },
-    {
-      id: 3,
-      title: 'Full Stack Developer',
-      company: { name: 'Amazon', logo: null, website: 'https://amazon.com' },
-      type: DRIVE_TYPES.FULL_TIME,
-      status: DRIVE_STATUS.UPCOMING,
-      location: 'Pune, Maharashtra',
-      ctc: '42 LPA',
-      stipend: null,
-      description: 'Join Amazon\'s retail technology team...',
-      eligibilityCriteria: 'B.Tech/M.Tech, CGPA >= 7.5, 2026 batch',
-      skillsRequired: ['Java', 'React', 'AWS', 'Microservices', 'Docker'],
-      applicationDeadline: '2026-09-20T23:59:59Z',
-      driveDate: '2026-10-01T09:00:00Z',
-      rounds: ['Online Assessment', 'Technical Interviews (3)', 'Bar Raiser'],
-      applied: true,
-    },
-    {
-      id: 4,
-      title: 'Data Science Intern',
-      company: { name: 'Flipkart', logo: null, website: 'https://flipkart.com' },
-      type: DRIVE_TYPES.INTERNSHIP,
-      status: DRIVE_STATUS.CLOSED,
-      location: 'Bangalore, Karnataka',
-      ctc: null,
-      stipend: '80k/month',
-      description: 'Data science internship with focus on recommendation systems...',
-      eligibilityCriteria: 'B.Tech/M.Tech, CGPA >= 8.5, ML/DL coursework',
-      skillsRequired: ['Python', 'TensorFlow', 'PyTorch', 'SQL', 'Statistics'],
-      applicationDeadline: '2026-08-01T23:59:59Z',
-      driveDate: '2026-08-15T09:00:00Z',
-      rounds: ['Coding Test', 'ML Assignment', 'Technical Interview'],
-      applied: false,
-    },
-    {
-      id: 5,
-      title: 'DevOps Engineer',
-      company: { name: 'Uber', logo: null, website: 'https://uber.com' },
-      type: DRIVE_TYPES.FULL_TIME,
-      status: DRIVE_STATUS.OPEN,
-      location: 'Remote / Bangalore',
-      ctc: '38 LPA',
-      stipend: null,
-      description: 'Build and maintain scalable infrastructure...',
-      eligibilityCriteria: 'B.Tech, CGPA >= 7.0, Experience with Kubernetes',
-      skillsRequired: ['Kubernetes', 'AWS', 'Terraform', 'Go', 'Prometheus'],
-      applicationDeadline: '2026-09-30T23:59:59Z',
-      driveDate: '2026-10-10T10:00:00Z',
-      rounds: ['Screening', 'Technical Deep Dive', 'System Design', 'Cultural Fit'],
-      applied: false,
-    },
-    {
-      id: 6,
-      title: 'Frontend Developer',
-      company: { name: 'Swiggy', logo: null, website: 'https://swiggy.com' },
-      type: DRIVE_TYPES.FULL_TIME,
-      status: DRIVE_STATUS.ONGOING,
-      location: 'Bangalore, Karnataka',
-      ctc: '32 LPA',
-      stipend: null,
-      description: 'Build delightful user experiences for millions of users...',
-      eligibilityCriteria: 'B.Tech, CGPA >= 7.0, 2+ years React experience',
-      skillsRequired: ['React', 'TypeScript', 'Next.js', 'GraphQL', 'Testing'],
-      applicationDeadline: '2026-09-05T23:59:59Z',
-      driveDate: '2026-09-12T09:00:00Z',
-      rounds: ['Portfolio Review', 'Coding Challenge', 'Technical Interview', 'Design Review'],
-      applied: false,
-    },
-  ];
+  const [detail, setDetail] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
-  useEffect(() => {
-    loadDrives();
-  }, []);
+  useEffect(() => { fetchDrives(); }, [tab]);
 
-  const loadDrives = async () => {
+  const fetchDrives = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // const data = await drivesApi.listDrives({ search, status: statusFilter, type: typeFilter });
-      // setDrives(data);
-      setDrives(mockDrives);
+      const data = await drivesApi.listDrives(tab);
+      setDrives(data || []);
     } catch (err) {
-      toast.error('Failed to load drives');
-      console.error(err);
+      setDrives([]);
+      toast.error(err.message || 'Could not load your drives');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredDrives = drives.filter((drive) => {
-    const matchesSearch = drive.title.toLowerCase().includes(search.toLowerCase()) ||
-      drive.company.name.toLowerCase().includes(search.toLowerCase()) ||
-      drive.location.toLowerCase().includes(search.toLowerCase()) ||
-      drive.skillsRequired.some((s) => s.toLowerCase().includes(search.toLowerCase()));
-    const matchesStatus = statusFilter === 'all' || drive.status === statusFilter;
-    const matchesType = typeFilter === 'all' || drive.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-  const handleApply = async (drive) => {
-    setApplying(drive.id);
+  const openDetail = async (postingId) => {
     try {
-      // TODO: Replace with actual API call
-      // await drivesApi.applyToDrive(drive.id, { resumeId: null, coverLetter: '' });
-      
-      // Update local state
-      setDrives((prev) => prev.map((d) => (d.id === drive.id ? { ...d, applied: true } : d)));
-      if (selectedDrive?.id === drive.id) {
-        setSelectedDrive({ ...selectedDrive, applied: true });
-      }
-      toast.success(`Applied to ${drive.title} at ${drive.company.name}!`);
+      const [d, e] = await Promise.all([
+        drivesApi.getDrive(postingId),
+        drivesApi.myEligibility(postingId).catch(() => null),
+      ]);
+      setDetail(d);
+      setEligibility(e);
     } catch (err) {
-      toast.error(err.message || 'Failed to apply');
-    } finally {
-      setApplying(null);
+      toast.error(err.message || 'Could not open this drive');
     }
   };
 
-  const openDriveDetail = (drive) => {
-    setSelectedDrive(drive);
+  const apply = async (postingId) => {
+    setBusyId(postingId);
+    try {
+      await drivesApi.applyToDrive(postingId);
+      toast.success('Applied. You can withdraw any time before the deadline.');
+      setDetail(null);
+      await fetchDrives();
+    } catch (err) {
+      // ELIGIBILITY_CHANGED carries the live reasons in its message — the student
+      // was eligible when this list was drawn, so a bare refusal would be baffling.
+      toast.error(err.message || 'Could not submit your application');
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'TBD';
-    return new Date(dateStr).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
+  const withdraw = async (postingId) => {
+    setBusyId(postingId);
+    try {
+      await drivesApi.withdrawApplication(postingId);
+      toast.info('Application withdrawn.');
+      setDetail(null);
+      await fetchDrives();
+    } catch (err) {
+      toast.error(err.message || 'Could not withdraw your application');
+    } finally {
+      setBusyId(null);
+    }
   };
-
-  const isDeadlinePassed = (dateStr) => {
-    if (!dateStr) return false;
-    return new Date(dateStr) < new Date();
-  };
-
-  if (loading) {
-    return (
-      <div className="content-container">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', color: 'var(--text-muted)' }}>
-          Loading placement drives...
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="content-container">
-      {/* Page Header */}
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div className="page-eyebrow">
-            <Briefcase size={13} /> Placement Drives
-          </div>
-          <h1 className="page-title">Browse Opportunities</h1>
-          <p className="page-desc">
-            {filteredDrives.length} of {drives.length} drives available
-          </p>
+    <div className="content-container page-fade-in">
+      <div className="page-header">
+        <div className="page-eyebrow">
+          <Briefcase size={13} /> Placement
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <h1 className="page-title">Drives</h1>
+        <p className="page-desc">
+          Every drive you are eligible for. Applying takes one tap — your profile is already
+          attached, so there is nothing to fill in.
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', alignItems: 'center' }}>
+        {TABS.map((t) => (
           <button
-            className={`btn ${showFilters ? 'btn-secondary' : 'btn-ghost'} btn-sm`}
-            onClick={() => setShowFilters(!showFilters)}
+            key={t.id}
+            className={`btn btn-sm ${tab === t.id ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTab(t.id)}
           >
-            <Filter size={14} /> Filters
+            {t.label}
           </button>
-        </div>
+        ))}
+        <button className="btn btn-ghost btn-sm" onClick={fetchDrives} disabled={loading}
+                style={{ marginLeft: 'auto' }}>
+          <RefreshCw size={12} /> Refresh
+        </button>
       </div>
 
-      {/* Search & Filters */}
-      <div className="panel" style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'end' }}>
-          <div className="form-group" style={{ flex: 1, minWidth: '280px', marginBottom: 0 }}>
-            <label className="form-label">Search Drives</label>
-            <div style={{ position: 'relative' }}>
-              <Search
-                size={16}
-                style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--text-muted)' }}
-              />
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Search by role, company, location, skills..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ paddingLeft: '40px' }}
-              />
-            </div>
+      {loading ? (
+        <div className="loading-state">Loading your drives...</div>
+      ) : drives.length === 0 ? (
+        <div className="empty-state">
+          <Briefcase className="empty-icon" size={34} />
+          <div className="empty-title">No drives here yet</div>
+          <div className="empty-desc">
+            {tab === 'open'
+              ? 'When the TnP publishes a drive you are eligible for, it will appear here.'
+              : 'Nothing in this view.'}
           </div>
-
-          {showFilters && (
-            <>
-              <div className="form-group" style={{ minWidth: '180px', marginBottom: 0 }}>
-                <label className="form-label">Status</label>
-                <select
-                  className="form-control"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="all">All Statuses</option>
-                  <option value={DRIVE_STATUS.OPEN}>Open</option>
-                  <option value={DRIVE_STATUS.UPCOMING}>Upcoming</option>
-                  <option value={DRIVE_STATUS.ONGOING}>Ongoing</option>
-                  <option value={DRIVE_STATUS.CLOSED}>Closed</option>
-                </select>
-              </div>
-
-              <div className="form-group" style={{ minWidth: '180px', marginBottom: 0 }}>
-                <label className="form-label">Type</label>
-                <select
-                  className="form-control"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                >
-                  <option value="all">All Types</option>
-                  <option value={DRIVE_TYPES.FULL_TIME}>Full-time</option>
-                  <option value={DRIVE_TYPES.INTERNSHIP}>Internship</option>
-                  <option value={DRIVE_TYPES.CONTRACT}>Contract</option>
-                </select>
-              </div>
-
-              {(statusFilter !== 'all' || typeFilter !== 'all') && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => { setStatusFilter('all'); setTypeFilter('all'); }}
-                  style={{ marginBottom: '2px' }}
-                >
-                  <X size={14} /> Clear
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Drives Grid */}
-      {filteredDrives.length === 0 ? (
-        <div className="panel empty-state">
-          <Briefcase className="empty-icon" size={64} />
-          <h3 className="empty-title">No drives found</h3>
-          <p className="empty-desc">
-            {search || statusFilter !== 'all' || typeFilter !== 'all'
-              ? 'Try adjusting your filters or search terms.'
-              : 'No placement drives available at the moment. Check back soon!'}
-          </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '20px' }}>
-          {filteredDrives.map((drive) => {
-            const DriveStatusIcon = statusIcons[drive.status] || statusIcons[DRIVE_STATUS.OPEN];
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+          {drives.map((d) => {
+            const cfg = STATUS_CONFIG[d.status] || STATUS_CONFIG.PUBLISHED;
+            const StatusIcon = cfg.Icon;
+            const pay = formatMoney(d.ctcMin, d.ctcMax);
+            const applied = d.myApplicationStatus === 'APPLIED';
+
             return (
-              <div key={drive.id} className="panel" style={{ transition: 'border-color 0.15s ease', borderColor: drive.applied ? 'var(--accent-teal)' : 'var(--border-subtle)' }}>
-                {/* Drive Header */}
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                  <div
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'linear-gradient(135deg, var(--accent-teal), var(--accent-blue))',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#fff',
-                      fontWeight: 700,
-                      fontSize: '20px',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {drive.company.name.charAt(0)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{drive.title}</h3>
-                      {drive.applied && (
-                        <span className="badge badge-active" style={{ fontSize: '10px' }}>
-                          <CheckCircle2 size={10} /> Applied
-                        </span>
-                      )}
+              <div key={d.postingId} className="panel"
+                   style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '14.5px' }}>{d.title}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                      <Building2 size={12} /> {d.companyName}
                     </div>
-                    <p style={{ fontSize: '13px', color: 'var(--accent-teal)', fontWeight: 500 }}>{drive.company.name}</p>
                   </div>
-                </div>
-
-                {/* Badges */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                  <span
-                    className="badge"
-                    style={{
-                      background: statusConfig[drive.status].bg,
-                      color: statusConfig[drive.status].color,
-                      borderColor: statusConfig[drive.status].color,
-                    }}
-                  >
-                    <DriveStatusIcon size={10} /> {statusConfig[drive.status].label}
-                  </span>
-                  <span
-                    className="badge"
-                    style={{
-                      background: `rgba(${typeConfig[drive.type].color.replace('#', '')}, 0.12)`,
-                      color: typeConfig[drive.type].color,
-                      borderColor: typeConfig[drive.type].color,
-                    }}
-                  >
-                    {typeConfig[drive.type].label}
+                  <span style={{
+                    fontSize: '10.5px', padding: '3px 8px', borderRadius: '20px',
+                    color: cfg.color, background: cfg.bg, whiteSpace: 'nowrap',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600,
+                  }}>
+                    <StatusIcon size={11} /> {cfg.label}
                   </span>
                 </div>
 
-                {/* Meta Info */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <MapPin size={14} /> {drive.location}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Briefcase size={12} /> {d.jobType?.replaceAll('_', ' ')}
                   </span>
-                  {drive.ctc && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--success)', fontWeight: 600 }}>
-                      <DollarSign size={14} /> {drive.ctc}
+                  {pay && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <IndianRupee size={12} /> {pay}
                     </span>
                   )}
-                  {drive.stipend && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-gold)', fontWeight: 600 }}>
-                      <DollarSign size={14} /> {drive.stipend}
-                    </span>
-                  )}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={14} /> Apply by {formatDate(drive.applicationDeadline)}
-                  </span>
-                </div>
-
-                {/* Skills */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                  {drive.skillsRequired.slice(0, 5).map((skill) => (
-                    <span key={skill} className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', fontSize: '10px' }}>
-                      {skill}
-                    </span>
-                  ))}
-                  {drive.skillsRequired.length > 5 && (
-                    <span className="badge" style={{ background: 'var(--bg-subtle)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)', fontSize: '10px' }}>
-                      +{drive.skillsRequired.length - 5} more
+                  {d.workMode && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <MapPin size={12} /> {d.workMode}
                     </span>
                   )}
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '8px', paddingTop: '12px', borderTop: '1px solid var(--divider)' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    style={{ flex: 1 }}
-                    onClick={() => openDriveDetail(drive)}
-                  >
-                    View Details
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <CalendarClock size={12} /> Closes {formatDate(d.applicationDeadline)}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '6px', alignItems: 'center' }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openDetail(d.postingId)}>
+                    <Info size={12} /> Details
                   </button>
-                  {drive.status === DRIVE_STATUS.OPEN || drive.status === DRIVE_STATUS.UPCOMING || drive.status === DRIVE_STATUS.ONGOING ? (
-                    <button
-                      className={drive.applied ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm'}
-                      style={{ flex: 1 }}
-                      onClick={() => handleApply(drive)}
-                      disabled={drive.applied || applying === drive.id}
-                    >
-                      {applying === drive.id ? 'Applying...' : drive.applied ? 'Applied' : 'Apply Now'}
-                    </button>
-                  ) : (
+                  {applied ? (
                     <button
                       className="btn btn-secondary btn-sm"
-                      style={{ flex: 1 }}
-                      disabled
+                      disabled={!d.applyOpen || busyId === d.postingId}
+                      onClick={() => withdraw(d.postingId)}
+                      style={{ marginLeft: 'auto' }}
                     >
-                      {drive.status === DRIVE_STATUS.CLOSED ? 'Closed' : 'Not Open'}
+                      {d.applyOpen ? 'Withdraw' : 'Applied'}
+                    </button>
+                  ) : d.myApplicationStatus && d.myApplicationStatus !== 'WITHDRAWN' ? (
+                    <span className="badge badge-info" style={{ marginLeft: 'auto' }}>
+                      {APPLICATION_LABEL[d.myApplicationStatus] || d.myApplicationStatus}
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={!d.applyOpen || busyId === d.postingId}
+                      onClick={() => apply(d.postingId)}
+                      style={{ marginLeft: 'auto' }}
+                      title={d.applyOpen ? undefined : 'Applications are closed for this drive'}
+                    >
+                      {busyId === d.postingId ? 'Applying...' : 'Easy Apply'}
                     </button>
                   )}
                 </div>
@@ -479,159 +291,108 @@ export function PlacementDrives() {
         </div>
       )}
 
-      {/* Drive Detail Modal */}
-      <Modal
-        isOpen={!!selectedDrive}
-        onClose={() => setSelectedDrive(null)}
-        title={selectedDrive?.title}
-        size="lg"
-      >
-        {selectedDrive && (
-          <>
-            const ModalStatusIcon = statusIcons[selectedDrive.status] || statusIcons[DRIVE_STATUS.OPEN];
-            <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'linear-gradient(135deg, var(--accent-teal), var(--accent-blue))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#fff',
-                    fontWeight: 700,
-                    fontSize: '18px',
-                  }}
-                >
-                  {selectedDrive.company.name.charAt(0)}
-                </div>
-                <div>
-                  <h4 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedDrive.company.name}</h4>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{selectedDrive.location}</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-                <span
-                  className="badge"
-                  style={{
-                    background: statusConfig[selectedDrive.status].bg,
-                    color: statusConfig[selectedDrive.status].color,
-                    borderColor: statusConfig[selectedDrive.status].color,
-                  }}
-                >
-                  <ModalStatusIcon size={10} /> {statusConfig[selectedDrive.status].label}
-                </span>
-                <span
-                  className="badge"
-                  style={{
-                    background: `rgba(${typeConfig[selectedDrive.type].color.replace('#', '')}, 0.12)`,
-                    color: typeConfig[selectedDrive.type].color,
-                    borderColor: typeConfig[selectedDrive.type].color,
-                  }}
-                >
-                  {typeConfig[selectedDrive.type].label}
-                </span>
-                {selectedDrive.ctc && (
-                  <span className="badge badge-active" style={{ fontSize: '11px' }}>
-                    <DollarSign size={10} /> {selectedDrive.ctc}
-                  </span>
-                )}
-                {selectedDrive.stipend && (
-                  <span className="badge" style={{ background: 'var(--warning-bg)', color: 'var(--warning)', borderColor: 'var(--warning-border)' }}>
-                    <DollarSign size={10} /> {selectedDrive.stipend}
-                  </span>
+      {/* ---------------- Detail ---------------- */}
+      <Modal isOpen={!!detail} onClose={() => setDetail(null)} title={detail?.title || ''} wide>
+        {detail && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={13} /> {detail.companyName}
+                {detail.companyWebsite && (
+                  <a href={detail.companyWebsite} target="_blank" rel="noreferrer" className="auth-link"
+                     style={{ fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    <ExternalLink size={11} /> Website
+                  </a>
                 )}
               </div>
+              {detail.companyDescription && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  {detail.companyDescription}
+                </p>
+              )}
+            </div>
 
-              <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--divider)' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={14} /> Deadline: {formatDate(selectedDrive.applicationDeadline)}
-                    {isDeadlinePassed(selectedDrive.applicationDeadline) && (
-                      <span className="badge badge-inactive" style={{ fontSize: '9px', marginLeft: '6px' }}>Expired</span>
-                    )}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={14} /> Drive Date: {formatDate(selectedDrive.driveDate)}
-                  </span>
-                  {selectedDrive.company.website && (
-                    <a href={selectedDrive.company.website} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-blue)', textDecoration: 'none' }}>
-                      <ExternalLink size={14} /> Company Website
-                    </a>
-                  )}
+            {detail.description && (
+              <div>
+                <div className="profile-section-title">About the role</div>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                  {detail.description}
+                </p>
+              </div>
+            )}
+
+            <div className="form-grid">
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Package</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                  {formatMoney(detail.ctcMin, detail.ctcMax) || '—'}
                 </div>
               </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <h5 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Description
-                </h5>
-                <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.6 }}>{selectedDrive.description}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <h5 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Eligibility Criteria
-                </h5>
-                <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.6 }}>{selectedDrive.eligibilityCriteria}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <h5 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Skills Required
-                </h5>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {selectedDrive.skillsRequired.map((skill) => (
-                    <span key={skill} className="badge" style={{ background: 'rgba(62, 200, 172, 0.12)', color: 'var(--accent-teal)', border: '1px solid rgba(62, 200, 172, 0.3)' }}>
-                      {skill}
-                    </span>
-                  ))}
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Openings</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                  <Users size={12} style={{ verticalAlign: '-2px' }} /> {detail.vacancyCount ?? '—'}
                 </div>
               </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <h5 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Selection Rounds
-                </h5>
-                <ol style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '20px' }}>
-                  {selectedDrive.rounds.map((round, idx) => (
-                    <li key={idx} style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--accent-teal)', color: '#0c0d0e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
-                        {idx + 1}
-                      </span>
-                      {round}
-                    </li>
-                  ))}
-                </ol>
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Applications close</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>{formatDate(detail.applicationDeadline)}</div>
               </div>
-
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--divider)' }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setSelectedDrive(null)}
-                >
-                  Close
-                </button>
-                {(selectedDrive.status === DRIVE_STATUS.OPEN || selectedDrive.status === DRIVE_STATUS.UPCOMING || selectedDrive.status === DRIVE_STATUS.ONGOING) && !selectedDrive.applied && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => handleApply(selectedDrive)}
-                    disabled={applying === selectedDrive.id}
-                  >
-                    {applying === selectedDrive.id ? 'Applying...' : 'Apply Now'}
-                  </button>
-                )}
-                {selectedDrive.applied && (
-                  <span className="badge badge-active" style={{ display: 'flex', alignItems: 'center', height: '40px', padding: '0 16px' }}>
-                    <CheckCircle2 size={14} /> Applied
-                  </span>
-                )}
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drive date</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>{formatDate(detail.driveDate)}</div>
               </div>
             </div>
-          </>
+
+            {(detail.mandatorySkills?.length > 0 || detail.preferredSkills?.length > 0) && (
+              <div>
+                <div className="profile-section-title">Skills</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {detail.mandatorySkills?.map((s) => (
+                    <span key={`m-${s}`} className="badge badge-active">{s}</span>
+                  ))}
+                  {detail.preferredSkills?.map((s) => (
+                    <span key={`p-${s}`} className="badge badge-pending">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {detail.criteriaSummary?.length > 0 && (
+              <div>
+                <div className="profile-section-title">Eligibility bar</div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                  {detail.criteriaSummary.map((c) => <li key={c}>{c}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {eligibility && !eligibility.eligible && (
+              <div className="alert alert-danger">
+                <div style={{ fontWeight: 600, marginBottom: '6px' }}>You cannot apply to this drive</div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px' }}>
+                  {eligibility.failureCodes.map((c) => <li key={c}>{describeFailure(c)}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setDetail(null)}>Close</button>
+              {detail.myApplicationStatus === 'APPLIED' ? (
+                <button className="btn btn-secondary"
+                        disabled={!detail.applyOpen || busyId === detail.postingId}
+                        onClick={() => withdraw(detail.postingId)}>
+                  Withdraw application
+                </button>
+              ) : (
+                <button className="btn btn-primary"
+                        disabled={!detail.applyOpen || busyId === detail.postingId || (eligibility && !eligibility.eligible)}
+                        onClick={() => apply(detail.postingId)}>
+                  {busyId === detail.postingId ? 'Applying...' : 'Easy Apply'}
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </Modal>
     </div>

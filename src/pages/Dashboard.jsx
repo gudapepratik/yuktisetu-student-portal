@@ -14,6 +14,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { PacmanLoader } from '../components/PacmanLoader';
 
 export function Dashboard({ setActiveView }) {
   const { user } = useAuth();
@@ -27,8 +28,16 @@ export function Dashboard({ setActiveView }) {
         const data = await userApi.getStudentProfile();
         setProfile(data);
       } catch (err) {
-        console.error('Failed to load profile:', err);
-        toast.error('Failed to load profile data');
+        if (err.status === 404) {
+          // Not an error -- this student just hasn't saved a profile yet.
+          // Not every student keeps a complete profile at every point in
+          // the program, so a missing/partial profile is expected, not a
+          // failure worth interrupting them with a toast over.
+          setProfile(null);
+        } else {
+          console.error('Failed to load profile:', err);
+          toast.error('Failed to load profile data');
+        }
       } finally {
         setLoading(false);
       }
@@ -38,23 +47,23 @@ export function Dashboard({ setActiveView }) {
   }, []);
 
   const stats = [
-    { label: 'Profile Completion', value: profile ? calculateCompletion(profile) : '...', icon: User, color: 'var(--accent-teal)' },
+    { label: 'Profile Completion', value: profile ? calculateCompletion(profile) : '0%', icon: User, color: 'var(--accent-teal)' },
     { label: 'Placement Drives', value: '0', icon: Briefcase, color: 'var(--accent-blue)' },
     { label: 'Coding Profiles', value: profile?.codingProfiles?.length || 0, icon: Code, color: 'var(--accent-gold)' },
     { label: 'Projects', value: profile?.projects?.length || 0, icon: FileText, color: 'var(--accent-purple)' },
   ];
 
+  // Completion is based only on what the student can actually fill in
+  // themselves. institution/degree/branch/cgpa/graduationYear/tenthPercentage/
+  // twelfthPercentage/semester GPAs are admin-set academic records -- a
+  // currently-studying student legitimately won't have all of those yet
+  // (e.g. semester GPAs fill in over time), so they don't count against
+  // completion here.
   function calculateCompletion(p) {
     const fields = [
       p.dateOfBirth,
       p.address,
-      p.institution,
-      p.degree,
-      p.branch,
-      p.cgpa,
-      p.graduationYear,
-      p.tenthPercentage,
-      p.twelfthPercentage,
+      p.coCubesScore,
       p.skills?.length,
       p.codingProfiles?.length,
       p.professionalProfiles?.length,
@@ -69,9 +78,7 @@ export function Dashboard({ setActiveView }) {
   if (loading) {
     return (
       <div className="content-container">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', color: 'var(--text-muted)' }}>
-          Loading dashboard...
-        </div>
+        <PacmanLoader label="Loading dashboard..." />
       </div>
     );
   }
@@ -80,7 +87,7 @@ export function Dashboard({ setActiveView }) {
   const displayName = user?.email?.split('@')[0] || 'Student';
 
   return (
-    <div className="content-container">
+    <div className="content-container page-fade-in">
       {/* Page Header */}
       <div className="page-header">
         <div className="page-eyebrow">

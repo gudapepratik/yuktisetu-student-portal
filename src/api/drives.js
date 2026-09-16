@@ -1,34 +1,38 @@
 import { apiRequest } from './client';
 
+/**
+ * Student-facing drive endpoints, served by drive-service on /api/drive.
+ *
+ * These paths replace an earlier speculative set (/api/drives/...) that was
+ * written before the backend existed and never matched it.
+ *
+ * Every call acts on the authenticated student and takes no student id — there is
+ * no parameter through which one student could ask about another's applications.
+ *
+ * A drive the student is not eligible for is not hidden, it is absent: the list
+ * only ever contains drives they may see, and asking for another one directly
+ * returns 404 rather than 403, so the id space cannot be walked.
+ */
 export const drivesApi = {
-  // List all active placement drives
-  listDrives: (params = {}) => {
-    const query = new URLSearchParams();
-    if (params.page) query.append('page', params.page);
-    if (params.limit) query.append('limit', params.limit);
-    if (params.search) query.append('search', params.search);
-    if (params.status) query.append('status', params.status);
-    if (params.type) query.append('type', params.type);
-    const queryString = query.toString() ? `?${query.toString()}` : '';
-    return apiRequest(`/api/drives${queryString}`);
-  },
+  /** tab: 'open' (default) | 'closed' | 'all' */
+  listDrives: (tab = 'open') =>
+    apiRequest(`/api/drive/postings?tab=${encodeURIComponent(tab)}`),
 
-  // Get single drive details
-  getDrive: (id) => apiRequest(`/api/drives/${id}`),
+  getDrive: (postingId) => apiRequest(`/api/drive/postings/${postingId}`),
 
-  // Apply to a drive
-  applyToDrive: (driveId, payload) =>
-    apiRequest(`/api/drives/${driveId}/apply`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+  /**
+   * "Why can't I apply?" — runs the same live check the apply endpoint runs, so
+   * the reason shown is the one that would actually block them.
+   */
+  myEligibility: (postingId) => apiRequest(`/api/drive/postings/${postingId}/my-eligibility`),
 
-  // Get student's applications
-  getMyApplications: () => apiRequest('/api/drives/my-applications'),
+  /** Easy Apply. No payload: the student's placement data already exists. */
+  applyToDrive: (postingId) =>
+    apiRequest(`/api/drive/postings/${postingId}/apply`, { method: 'POST' }),
 
-  // Withdraw application
-  withdrawApplication: (applicationId) =>
-    apiRequest(`/api/drives/applications/${applicationId}/withdraw`, {
-      method: 'POST',
-    }),
+  /** Only while the window is open — after the deadline the pool is sealed. */
+  withdrawApplication: (postingId) =>
+    apiRequest(`/api/drive/postings/${postingId}/apply`, { method: 'DELETE' }),
+
+  getMyApplications: () => apiRequest('/api/drive/applications'),
 };

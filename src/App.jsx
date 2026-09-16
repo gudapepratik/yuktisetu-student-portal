@@ -8,21 +8,34 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Profile } from './pages/Profile';
 import { PlacementDrives } from './pages/PlacementDrives';
+import { Settings } from './pages/Settings';
 import { AcceptInvite } from './pages/AcceptInvite';
 import './styles/student.css';
 
+/**
+ * Is this page load an invite activation?
+ *
+ * Read synchronously during the first render, not in an effect. An effect runs
+ * after the first paint, so the visitor briefly saw the Login screen before the
+ * invite form replaced it -- and anyone who typed into that flash got an
+ * invalid-credentials error for an account that does not have a password yet.
+ */
+function isInviteLink() {
+  const params = new URLSearchParams(window.location.search);
+  return Boolean(params.get('token')) || window.location.pathname.includes('/accept-invite');
+}
+
 function MainApp() {
   const { isAuthenticated, loading } = useAuth();
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(() => (isInviteLink() ? 'accept-invite' : 'dashboard'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Check if opening with an invite token in URL
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('token') || window.location.pathname.includes('/accept-invite')) {
-      setActiveView('accept-invite');
-    }
-  }, []);
+  // Activating an invite comes BEFORE the auth and loading gates -- see
+  // isInviteLink above. The invited person is not whoever happens to be signed
+  // in on this browser.
+  if (activeView === 'accept-invite') {
+    return <AcceptInvite setActiveView={setActiveView} />;
+  }
 
   if (loading) {
     return (
@@ -34,9 +47,6 @@ function MainApp() {
 
   // Unauthenticated routing
   if (!isAuthenticated) {
-    if (activeView === 'accept-invite') {
-      return <AcceptInvite setActiveView={setActiveView} />;
-    }
     return <Login setActiveView={setActiveView} />;
   }
 
@@ -57,6 +67,7 @@ function MainApp() {
           {activeView === 'dashboard' && <Dashboard setActiveView={setActiveView} />}
           {activeView === 'profile' && <Profile />}
           {activeView === 'drives' && <PlacementDrives />}
+          {activeView === 'settings' && <Settings />}
         </main>
       </div>
     </div>

@@ -13,4 +13,10 @@ export const userApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  // Get basic user profile by userId
+  getUserProfile: (userId) =>
+    apiRequest(`/api/user/user-profile/${userId}`, {
+      method: 'GET',
+    }),
 };

@@ -18,6 +18,19 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { PacmanLoader } from '../components/PacmanLoader';
+
+// Admin-set academic fields are shown faded when unset and full-contrast
+// once the institute admin has actually set them, so an incomplete record
+// (e.g. semester GPAs not filled in yet for a currently-studying student)
+// reads as "not set yet" rather than looking broken.
+const academicFieldStyle = (value) => {
+  const hasValue = value !== null && value !== undefined && value !== '';
+  return {
+    opacity: hasValue ? 1 : 0.45,
+    color: hasValue ? 'var(--text-primary)' : 'var(--text-dim)',
+  };
+};
 
 export function Profile() {
   const { toast } = useToast();
@@ -25,20 +38,19 @@ export function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  // True when the backend has no StudentProfile row for this user yet (a
+  // fresh 404, not a failure) -- distinct from a real fetch error below.
+  const [profileNotFound, setProfileNotFound] = useState(false);
 
-  // Form state
+  // Form state -- only the fields a student can actually edit. institution/
+  // degree/branch/cgpa/graduationYear/tenthPercentage/twelfthPercentage/
+  // semester GPAs are admin-controlled (set via bulk-student-import, sourced
+  // from College/Department/UserRoleAssignment.degree) and are read directly
+  // from `profile` below, never from this editable state.
   const [formData, setFormData] = useState({
     dateOfBirth: '',
     address: '',
-    institution: '',
-    degree: '',
-    branch: '',
-    cgpa: '',
-    graduationYear: '',
-    tenthPercentage: '',
-    twelfthPercentage: '',
     coCubesScore: '',
-    compositeScore: '',
     skills: [],
     codingProfiles: [],
     professionalProfiles: [],
@@ -52,19 +64,12 @@ export function Profile() {
       try {
         const data = await userApi.getStudentProfile();
         setProfile(data);
+        setProfileNotFound(false);
         // Convert data to form format
         setFormData({
           dateOfBirth: data.dateOfBirth ? data.dateOfBirth.split('T')[0] : '',
           address: data.address || '',
-          institution: data.institution || '',
-          degree: data.degree || '',
-          branch: data.branch || '',
-          cgpa: data.cgpa || '',
-          graduationYear: data.graduationYear || '',
-          tenthPercentage: data.tenthPercentage || '',
-          twelfthPercentage: data.twelfthPercentage || '',
           coCubesScore: data.coCubesScore || '',
-          compositeScore: data.compositeScore || '',
           skills: data.skills || [],
           codingProfiles: data.codingProfiles || [],
           professionalProfiles: data.professionalProfiles || [],
@@ -73,8 +78,15 @@ export function Profile() {
           achievements: data.achievements || [],
         });
       } catch (err) {
-        console.error('Failed to load profile:', err);
-        toast.error('Failed to load profile data');
+        if (err.status === 404) {
+          // Not an error -- the student just hasn't saved a profile yet.
+          // Leave formData at its blank default so they can fill it in.
+          setProfile(null);
+          setProfileNotFound(true);
+        } else {
+          console.error('Failed to load profile:', err);
+          toast.error('Failed to load profile data');
+        }
       } finally {
         setLoading(false);
       }
@@ -115,18 +127,8 @@ export function Profile() {
 
   const validateForm = () => {
     const newErrors = {};
-    if (!formData.institution) newErrors.institution = 'Institution is required';
-    if (!formData.degree) newErrors.degree = 'Degree is required';
-    if (!formData.branch) newErrors.branch = 'Branch is required';
-    if (!formData.graduationYear) newErrors.graduationYear = 'Graduation year is required';
-    if (formData.cgpa && (parseFloat(formData.cgpa) < 0 || parseFloat(formData.cgpa) > 10)) {
-      newErrors.cgpa = 'CGPA must be between 0 and 10';
-    }
-    if (formData.tenthPercentage && (parseFloat(formData.tenthPercentage) < 0 || parseFloat(formData.tenthPercentage) > 100)) {
-      newErrors.tenthPercentage = 'Percentage must be between 0 and 100';
-    }
-    if (formData.twelfthPercentage && (parseFloat(formData.twelfthPercentage) < 0 || parseFloat(formData.twelfthPercentage) > 100)) {
-      newErrors.twelfthPercentage = 'Percentage must be between 0 and 100';
+    if (formData.coCubesScore !== '' && (parseFloat(formData.coCubesScore) < 0 || parseFloat(formData.coCubesScore) > 800)) {
+      newErrors.coCubesScore = 'CoCubes score must be between 0 and 800';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -137,15 +139,7 @@ export function Profile() {
     const fields = [
       'dateOfBirth',
       'address',
-      'institution',
-      'degree',
-      'branch',
-      'cgpa',
-      'graduationYear',
-      'tenthPercentage',
-      'twelfthPercentage',
       'coCubesScore',
-      'compositeScore',
       'skills',
       'codingProfiles',
       'professionalProfiles',
@@ -173,10 +167,19 @@ export function Profile() {
           if (typeof item === 'string') return item.trim() !== '';
           return Object.values(item).some((v) => v !== '' && v !== null && v !== undefined);
         });
-        payload[field] = filtered;
+        // codingProfiles.rating is a Double on the backend -- coerce from
+        // the input's raw string so it's sent as a number, not text.
+        payload[field] = field === 'codingProfiles'
+          ? filtered.map((item) => ({
+              ...item,
+              rating: item.rating === '' || item.rating === null || item.rating === undefined
+                ? null
+                : Number(item.rating),
+            }))
+          : filtered;
       } else if (value !== '' && value !== null && value !== undefined) {
         // For numeric fields, convert to number
-        if (['cgpa', 'graduationYear', 'tenthPercentage', 'twelfthPercentage', 'coCubesScore', 'compositeScore'].includes(field)) {
+        if (['coCubesScore'].includes(field)) {
           payload[field] = value === '' ? null : Number(value);
         } else {
           payload[field] = value;
@@ -210,15 +213,7 @@ export function Profile() {
       setFormData({
         dateOfBirth: profile.dateOfBirth ? profile.dateOfBirth.split('T')[0] : '',
         address: profile.address || '',
-        institution: profile.institution || '',
-        degree: profile.degree || '',
-        branch: profile.branch || '',
-        cgpa: profile.cgpa || '',
-        graduationYear: profile.graduationYear || '',
-        tenthPercentage: profile.tenthPercentage || '',
-        twelfthPercentage: profile.twelfthPercentage || '',
         coCubesScore: profile.coCubesScore || '',
-        compositeScore: profile.compositeScore || '',
         skills: profile.skills || [],
         codingProfiles: profile.codingProfiles || [],
         professionalProfiles: profile.professionalProfiles || [],
@@ -234,15 +229,13 @@ export function Profile() {
   if (loading) {
     return (
       <div className="content-container">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px', color: 'var(--text-muted)' }}>
-          Loading profile...
-        </div>
+        <PacmanLoader label="Loading profile..." />
       </div>
     );
   }
 
   return (
-    <div className="content-container">
+    <div className="content-container page-fade-in">
       {/* Page Header */}
       <div className="page-header">
         <div className="page-eyebrow">
@@ -253,6 +246,13 @@ export function Profile() {
           Manage your academic records, skills, projects, and professional information.
         </p>
       </div>
+
+      {profileNotFound && (
+        <div className="alert alert-success" style={{ marginBottom: '16px' }}>
+          <CheckCircle2 size={16} flexShrink={0} />
+          <span>No profile found yet for your account. Fill in your details below and click "Save Changes" to create one.</span>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '24px' }}>
         {/* Main Form */}
@@ -292,120 +292,113 @@ export function Profile() {
               <h3 className="profile-section-title">
                 <GraduationCap size={16} /> Academic Information
               </h3>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '-8px', marginBottom: '12px' }}>
+                These fields are set by your institute admin and can't be edited here, except CoCubes Score.
+              </p>
               <div className="profile-fields">
                 <div className="form-group">
-                  <label className="form-label">Institution *</label>
+                  <label className="form-label">Institution</label>
                   <input
                     type="text"
                     className="form-control"
-                    value={formData.institution}
-                    onChange={(e) => handleChange('institution', e.target.value)}
-                    placeholder="e.g. Pimpri Chinchwad College of Engineering"
+                    value={profile?.institution || ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.institution)}
                   />
-                  {errors.institution && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.institution}</span>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Degree *</label>
+                  <label className="form-label">Degree</label>
                   <input
                     type="text"
                     className="form-control"
-                    value={formData.degree}
-                    onChange={(e) => handleChange('degree', e.target.value)}
-                    placeholder="e.g. Bachelor of Technology"
+                    value={profile?.degree || ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.degree)}
                   />
-                  {errors.degree && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.degree}</span>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Branch *</label>
+                  <label className="form-label">Branch</label>
                   <input
                     type="text"
                     className="form-control"
-                    value={formData.branch}
-                    onChange={(e) => handleChange('branch', e.target.value)}
-                    placeholder="e.g. Computer Engineering"
+                    value={profile?.branch || ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.branch)}
                   />
-                  {errors.branch && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.branch}</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">CGPA</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="10"
+                    type="text"
                     className="form-control"
-                    value={formData.cgpa}
-                    onChange={(e) => handleChange('cgpa', e.target.value)}
-                    placeholder="e.g. 8.75"
+                    value={profile?.cgpa ?? ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.cgpa)}
                   />
-                  {errors.cgpa && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.cgpa}</span>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Graduation Year *</label>
+                  <label className="form-label">Graduation Year</label>
                   <input
-                    type="number"
-                    min="2000"
-                    max={new Date().getFullYear() + 5}
+                    type="text"
                     className="form-control"
-                    value={formData.graduationYear}
-                    onChange={(e) => handleChange('graduationYear', e.target.value)}
-                    placeholder="e.g. 2026"
+                    value={profile?.graduationYear ?? ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.graduationYear)}
                   />
-                  {errors.graduationYear && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.graduationYear}</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">10th Percentage</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
+                    type="text"
                     className="form-control"
-                    value={formData.tenthPercentage}
-                    onChange={(e) => handleChange('tenthPercentage', e.target.value)}
-                    placeholder="e.g. 92.5"
+                    value={profile?.tenthPercentage ?? ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.tenthPercentage)}
                   />
-                  {errors.tenthPercentage && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.tenthPercentage}</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label">12th Percentage</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
+                    type="text"
                     className="form-control"
-                    value={formData.twelfthPercentage}
-                    onChange={(e) => handleChange('twelfthPercentage', e.target.value)}
-                    placeholder="e.g. 89.0"
+                    value={profile?.twelfthPercentage ?? ''}
+                    placeholder="Not set by your institute admin yet"
+                    disabled
+                    style={academicFieldStyle(profile?.twelfthPercentage)}
                   />
-                  {errors.twelfthPercentage && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.twelfthPercentage}</span>}
                 </div>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                  <div className="form-group" key={`sem${sem}Gpa`}>
+                    <label className="form-label">Semester {sem} GPA</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={profile?.[`sem${sem}Gpa`] ?? ''}
+                      placeholder="Not set by your institute admin yet"
+                      disabled
+                      style={academicFieldStyle(profile?.[`sem${sem}Gpa`])}
+                    />
+                  </div>
+                ))}
                 <div className="form-group">
                   <label className="form-label">CoCubes Score</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    max="100"
+                    max="800"
                     className="form-control"
                     value={formData.coCubesScore}
                     onChange={(e) => handleChange('coCubesScore', e.target.value)}
-                    placeholder="e.g. 78.5"
+                    placeholder="e.g. 650"
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Composite Score</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    className="form-control"
-                    value={formData.compositeScore}
-                    onChange={(e) => handleChange('compositeScore', e.target.value)}
-                    placeholder="e.g. 84.2"
-                  />
+                  {errors.coCubesScore && <span style={{ fontSize: '11px', color: 'var(--danger)' }}>{errors.coCubesScore}</span>}
                 </div>
               </div>
             </div>
@@ -826,16 +819,16 @@ export function Profile() {
             </div>
             <div className="profile-card">
               <div className="profile-avatar" style={{ width: '56px', height: '56px', fontSize: '20px' }}>
-                {formData.institution ? '🎓' : '👤'}
+                {profile?.institution ? '🎓' : '👤'}
               </div>
               <div className="profile-info">
                 <div className="profile-name" style={{ fontSize: '15px' }}>
-                  {formData.institution || 'Profile Incomplete'}
+                  {profile?.institution || 'Profile Incomplete'}
                 </div>
                 <div className="profile-meta" style={{ fontSize: '11px' }}>
-                  {formData.branch && <span><Award size={12} /> {formData.branch}</span>}
-                  {formData.cgpa && <span><TrendingUp size={12} /> CGPA: {formData.cgpa}</span>}
-                  {formData.graduationYear && <span><GraduationCap size={12} /> {formData.graduationYear}</span>}
+                  {profile?.branch && <span><Award size={12} /> {profile.branch}</span>}
+                  {profile?.cgpa && <span><TrendingUp size={12} /> CGPA: {profile.cgpa}</span>}
+                  {profile?.graduationYear && <span><GraduationCap size={12} /> {profile.graduationYear}</span>}
                 </div>
               </div>
             </div>
@@ -846,25 +839,31 @@ export function Profile() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
-                  { key: 'institution', label: 'Institution', icon: GraduationCap },
-                  { key: 'degree', label: 'Degree', icon: Award },
-                  { key: 'branch', label: 'Branch', icon: Code },
-                  { key: 'cgpa', label: 'CGPA', icon: TrendingUp },
-                  { key: 'skills', label: 'Skills', icon: Award },
-                  { key: 'projects', label: 'Projects', icon: Briefcase },
-                  { key: 'codingProfiles', label: 'Coding Profiles', icon: Code },
-                  { key: 'achievements', label: 'Achievements', icon: Trophy },
-                ].map((item) => (
-                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                    <item.icon size={14} color={formData[item.key] ? 'var(--success)' : 'var(--text-muted)'} />
-                    <span style={{ color: formData[item.key] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                      {item.label}
-                    </span>
-                    <span style={{ marginLeft: 'auto', color: formData[item.key] ? 'var(--success)' : 'var(--text-dim)' }}>
-                      {formData[item.key] ? '✓' : '✗'}
-                    </span>
-                  </div>
-                ))}
+                  { key: 'institution', label: 'Institution', icon: GraduationCap, source: 'profile' },
+                  { key: 'degree', label: 'Degree', icon: Award, source: 'profile' },
+                  { key: 'branch', label: 'Branch', icon: Code, source: 'profile' },
+                  { key: 'cgpa', label: 'CGPA', icon: TrendingUp, source: 'profile' },
+                  { key: 'skills', label: 'Skills', icon: Award, source: 'formData' },
+                  { key: 'projects', label: 'Projects', icon: Briefcase, source: 'formData' },
+                  { key: 'codingProfiles', label: 'Coding Profiles', icon: Code, source: 'formData' },
+                  { key: 'achievements', label: 'Achievements', icon: Trophy, source: 'formData' },
+                ].map((item) => {
+                  // institution/degree/branch/cgpa are admin-set and read
+                  // from `profile`, not the editable `formData`.
+                  const value = item.source === 'profile' ? profile?.[item.key] : formData[item.key];
+                  const complete = Array.isArray(value) ? value.length > 0 : !!value;
+                  return (
+                    <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                      <item.icon size={14} color={complete ? 'var(--success)' : 'var(--text-muted)'} />
+                      <span style={{ color: complete ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {item.label}
+                      </span>
+                      <span style={{ marginLeft: 'auto', color: complete ? 'var(--success)' : 'var(--text-dim)' }}>
+                        {complete ? '✓' : '✗'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

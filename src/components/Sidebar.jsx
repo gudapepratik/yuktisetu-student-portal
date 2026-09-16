@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, User, FileText, Briefcase, Trophy, Code, LogOut, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Briefcase, Trophy, Code, Settings, LogOut, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
@@ -9,10 +9,15 @@ const NAV_ITEMS = [
   { id: 'drives', label: 'Placement Drives', icon: Briefcase },
   { id: 'achievements', label: 'Achievements', icon: Trophy },
   { id: 'coding', label: 'Coding Profiles', icon: Code },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar({ activeView, setActiveView, collapsed, toggleCollapse }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ width: collapsed ? '72px' : '250px', transition: 'width 0.2s ease' }}>
@@ -42,10 +47,22 @@ export function Sidebar({ activeView, setActiveView, collapsed, toggleCollapse }
         ))}
       </nav>
 
-      <div className="sidebar-footer" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: '12px' }}>
+      <div
+        className="sidebar-footer"
+        style={{
+          flexDirection: collapsed ? 'column' : 'row',
+          alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'space-between',
+          padding: '12px',
+          gap: collapsed ? '8px' : '0',
+        }}
+      >
         {!collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-            <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div
+              title={user?.email}
+              style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
               {user?.email}
             </div>
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: 'var(--font-mono)' }}>
@@ -53,14 +70,25 @@ export function Sidebar({ activeView, setActiveView, collapsed, toggleCollapse }
             </div>
           </div>
         )}
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={toggleCollapse}
-          style={{ padding: '6px', minWidth: '32px' }}
-          title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        >
-          <ChevronLeft size={16} style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
-        </button>
+
+        <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', gap: '4px', flexShrink: 0 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleLogout}
+            style={{ padding: '6px', minWidth: '32px', color: 'var(--danger)' }}
+            title="Sign Out"
+          >
+            <LogOut size={16} />
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={toggleCollapse}
+            style={{ padding: '6px', minWidth: '32px' }}
+            title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          >
+            <ChevronLeft size={16} style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+          </button>
+        </div>
       </div>
     </aside>
   );

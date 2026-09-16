@@ -8,20 +8,38 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* 10-Tone Dark Theme Palette (Default) - Teal accent for student portal */
-  --bg-app: #0c0d0e;
-  --bg-sidebar: #101214;
-  --bg-surface: #141618;
-  --bg-surface-raised: #181b1e;
-  --bg-subtle: #1e2226;
-  
-  --border-subtle: #24292f;
-  --border-strong: #323942;
-  --divider: #1f2429;
+  /* Tells the browser to render native widgets (scrollbars, date pickers,
+     number spinners, autofill) in dark chrome -- without this they render
+     light-on-light inside dark inputs. */
+  color-scheme: dark;
+
+  /* Elevation ramp. The previous values (#0c0d0e / #101214 / #141618) were
+     only ~4 steps per channel apart, so panels, stat cards and the top
+     header were visually indistinguishable from the page behind them --
+     that, not text colour, was the real "no contrast in dark mode" problem.
+     Each layer is now a clearly perceptible step lighter than the last. */
+  --bg-app: #08090b;
+  --bg-sidebar: #101318;
+  --bg-surface: #181c22;
+  --bg-surface-raised: #212730;
+  --bg-subtle: #29303a;
+
+  --border-subtle: #2e3742;
+  --border-strong: #414c59;
+  --divider: #262e38;
 
   --text-primary: #f0f3f6;
-  --text-secondary: #9da7b3;
-  --text-muted: #65707d;
-  --text-dim: #48525e;
+  --text-secondary: #a7b2bf;
+  /* Bumped from #65707d/#48525e -- those failed WCAG AA (~2-3:1) against
+     --bg-surface/--bg-sidebar, which was the real cause of "low contrast"
+     complaints on Dashboard stat/action descriptions and the Sidebar
+     footer role label (all of which rely on these two tokens). */
+  --text-muted: #8b95a3;
+  --text-dim: #667180;
+
+  /* Alias for --bg-subtle -- some components reference this name for
+     read-only/static field backgrounds. */
+  --bg-secondary: #29303a;
 
   /* Brand Accents - Teal primary for student portal */
   --accent-teal: #3ec8ac;
@@ -46,8 +64,8 @@
   --danger-border: rgba(235, 87, 87, 0.3);
 
   --glass-tint: 255 255 255;
-  --glass-bg: rgba(20, 22, 24, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(24, 28, 34, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.1);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -60,6 +78,8 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
+
   --bg-app: #f4f6f9;
   --bg-sidebar: #ebedf2;
   --bg-surface: #ffffff;
@@ -74,6 +94,8 @@
   --text-secondary: #4a5568;
   --text-muted: #718096;
   --text-dim: #a0aec0;
+
+  --bg-secondary: #eef1f5;
 
   --accent-teal: #2cb698;
   --accent-teal-glow: rgba(44, 182, 152, 0.18);
@@ -449,6 +471,11 @@ textarea.form-control {
   resize: vertical;
 }
 
+.form-control:disabled {
+  cursor: not-allowed;
+  background: var(--bg-subtle);
+}
+
 /* ==========================================================================
    Data Tables
    ========================================================================== */
@@ -535,6 +562,18 @@ textarea.form-control {
   border: 1px solid rgba(62, 200, 172, 0.3);
 }
 
+.badge-info {
+  background: var(--accent-blue-glow);
+  color: var(--accent-blue);
+  border: 1px solid rgba(77, 141, 247, 0.3);
+}
+
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid var(--warning-border);
+}
+
 /* ==========================================================================
    Toasts & Alerts
    ========================================================================== */
@@ -613,6 +652,16 @@ textarea.form-control {
   max-width: 540px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  /* Cap to the viewport and scroll the body inside. A drive's full detail --
+     description, skills and the eligibility bar -- runs well past the bottom of
+     a 13" screen otherwise, taking the Easy Apply button with it. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+}
+
+.modal-card.modal-wide {
+  max-width: 720px;
 }
 
 .modal-header {
@@ -625,6 +674,27 @@ textarea.form-control {
 
 .modal-body {
   padding: 22px;
+  /* min-height:0 is what lets a flex child shrink and scroll. */
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.modal-header,
+.modal-footer {
+  flex-shrink: 0;
+}
+
+/* Exactly two columns inside a modal; one on a narrow viewport. */
+.modal-body .form-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+@media (max-width: 560px) {
+  .modal-body .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modal-footer {
@@ -1149,4 +1219,169 @@ textarea.form-control {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+/* Fade-up entrance for content that replaces a loading state -- applied
+   once on mount (loading flips false -> the loaded view mounts fresh). */
+.page-fade-in {
+  animation: pageFadeUp 0.35s ease-out;
+}
+
+@keyframes pageFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
+   Pacman Loader -- two chomping pacmen of different accent colors crossing
+   paths, with a trail of dots being eaten and an indeterminate progress bar
+   underneath. Used wherever a page is waiting on a backend round-trip.
+   -------------------------------------------------------------------------- */
+
+.pacman-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 260px;
+  padding: 40px 20px;
+  animation: pageFadeUp 0.3s ease-out;
+}
+
+.pacman-track {
+  position: relative;
+  width: 200px;
+  height: 32px;
+}
+
+/* Dot row spans exactly the range the pacman's CENTRE travels (16px -> 184px),
+   so the clip-path "eaten" edge below stays locked to his mouth in both
+   directions. Both animations share the same duration, timing function and
+   keyframe stops -- that's what keeps them in sync. */
+.pacman-dots {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  right: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: pacmanDotsEaten 3s infinite ease-in-out;
+}
+
+.pacman-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+@keyframes pacmanDotsEaten {
+  /* travelling right: clip away from the left as he passes */
+  0%   { clip-path: inset(0 0 0 0); }
+  45%  { clip-path: inset(0 0 0 100%); }
+  /* he turns around -- the row refills behind him */
+  50%  { clip-path: inset(0 0 0 0); }
+  /* travelling left: clip away from the right instead */
+  95%  { clip-path: inset(0 100% 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+.pacman {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  z-index: 2;
+  animation: pacmanTravel 3s infinite ease-in-out;
+}
+
+/* scaleX(-1) at each end flips the mouth to face the direction of travel;
+   interpolating through scaleX(0) reads as him physically turning around. */
+@keyframes pacmanTravel {
+  0%   { transform: translateX(0) scaleX(1); }
+  45%  { transform: translateX(168px) scaleX(1); }
+  50%  { transform: translateX(168px) scaleX(-1); }
+  95%  { transform: translateX(0) scaleX(-1); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+
+/* Two half-discs hinged on the centre line. Rotating them apart opens a
+   wedge on the leading edge -- no size jitter, unlike animating borders. */
+.pacman-half {
+  position: absolute;
+  left: 0;
+  display: block;
+  width: 32px;
+  height: 16px;
+  background: var(--accent-teal);
+}
+
+.pacman-top {
+  top: 0;
+  border-radius: 16px 16px 0 0;
+  transform-origin: 50% 100%;
+  animation: pacmanChompTop 0.45s infinite ease-in-out;
+}
+
+.pacman-bottom {
+  bottom: 0;
+  border-radius: 0 0 16px 16px;
+  transform-origin: 50% 0;
+  animation: pacmanChompBottom 0.45s infinite ease-in-out;
+}
+
+@keyframes pacmanChompTop {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(-34deg); }
+}
+
+@keyframes pacmanChompBottom {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(34deg); }
+}
+
+.pacman-eye {
+  position: absolute;
+  top: 4px;
+  right: 9px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--bg-app);
+}
+
+.pacman-progress-bar {
+  width: 220px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+  position: relative;
+}
+
+.pacman-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-teal), var(--accent-blue));
+  animation: pacmanBarSlide 1.3s infinite ease-in-out;
+}
+
+@keyframes pacmanBarSlide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(330%); }
+}
+
+.pacman-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.2px;
 }

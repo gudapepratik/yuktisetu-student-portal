@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { authApi } from '../api/auth';
+import { refreshAuthToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const refreshTimerRef = useRef(null);
 
   // Parse JWT token payload safely without external dependencies
   const decodeJwt = (token) => {
@@ -23,6 +25,35 @@ export function AuthProvider({ children }) {
       return null;
     }
   };
+
+  const cancelProactiveRefresh = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }, []);
+
+  // Refreshes the access token ~60s before it actually expires, so a logged
+  // in user's session renews silently instead of always waiting for a 401.
+  // Failure here is not fatal by itself -- the next real request will hit
+  // the reactive 401-refresh path in api/client.js and log the user out if
+  // the refresh token itself has also gone bad.
+  const scheduleProactiveRefresh = useCallback((expSeconds) => {
+    cancelProactiveRefresh();
+    const delayMs = Math.max(expSeconds - 60, 30) * 1000;
+    refreshTimerRef.current = setTimeout(async () => {
+      try {
+        await refreshAuthToken();
+        const newToken = localStorage.getItem('ys_access_token');
+        const payload = newToken ? decodeJwt(newToken) : null;
+        if (payload?.exp) {
+          scheduleProactiveRefresh(payload.exp - Math.floor(Date.now() / 1000));
+        }
+      } catch {
+        // swallowed -- the reactive 401 path handles a truly dead session
+      }
+    }, delayMs);
+  }, [cancelProactiveRefresh]);
 
   useEffect(() => {
     const token = localStorage.getItem('ys_access_token');
@@ -53,12 +84,28 @@ export function AuthProvider({ children }) {
           token,
           refreshToken,
         });
+        scheduleProactiveRefresh(payload.exp - Math.floor(Date.now() / 1000));
       } else {
         logout();
       }
     }
     setLoading(false);
+
+    return () => cancelProactiveRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A refresh attempt (proactive or reactive) exhausted the refresh token
+  // too -- api/client.js dispatches this instead of importing React state
+  // directly. Reset local user state so the SPA falls back to the Login view.
+  useEffect(() => {
+    const handleExpired = () => {
+      cancelProactiveRefresh();
+      setUser(null);
+    };
+    window.addEventListener('ys:auth-expired', handleExpired);
+    return () => window.removeEventListener('ys:auth-expired', handleExpired);
+  }, [cancelProactiveRefresh]);
 
   const login = async (email, password) => {
     const data = await authApi.login({ email, password });
@@ -92,6 +139,9 @@ export function AuthProvider({ children }) {
     };
 
     setUser(userObj);
+    if (payload?.exp) {
+      scheduleProactiveRefresh(payload.exp - Math.floor(Date.now() / 1000));
+    }
     return userObj;
   };
 
@@ -104,6 +154,7 @@ export function AuthProvider({ children }) {
         console.warn('Logout notification error:', err.message);
       }
     }
+    cancelProactiveRefresh();
     localStorage.removeItem('ys_access_token');
     localStorage.removeItem('ys_refresh_token');
     setUser(null);
