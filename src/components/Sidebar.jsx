@@ -1,10 +1,11 @@
 import React from 'react';
-import { LayoutDashboard, User, FileText, Briefcase, Trophy, Code, Settings, LogOut, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, User, FileText, FolderOpen, Briefcase, Trophy, Code, Settings, LogOut, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'profile', label: 'My Profile', icon: User },
+  { id: 'documents', label: 'My Documents', icon: FolderOpen },
   { id: 'resume', label: 'Resume Builder', icon: FileText },
   { id: 'drives', label: 'Placement Drives', icon: Briefcase },
   { id: 'achievements', label: 'Achievements', icon: Trophy },
