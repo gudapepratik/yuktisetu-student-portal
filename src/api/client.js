@@ -92,8 +92,14 @@ async function parseResponse(response, endpoint) {
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('ys_access_token');
 
+  // A FormData body must NOT carry an explicit Content-Type -- the browser sets
+  // it so it can append the multipart boundary, and forcing application/json
+  // here makes the server reject the upload as malformed. Uploads still run
+  // through this function so they inherit the 401 refresh-and-retry below.
+  const isMultipart = options.body instanceof FormData;
+
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isMultipart ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };

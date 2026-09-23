@@ -7,6 +7,7 @@ import { Header } from './components/Header';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Profile } from './pages/Profile';
+import { Documents } from './pages/Documents';
 import { PlacementDrives } from './pages/PlacementDrives';
 import { Settings } from './pages/Settings';
 import { AcceptInvite } from './pages/AcceptInvite';
@@ -66,6 +67,7 @@ function MainApp() {
         <main>
           {activeView === 'dashboard' && <Dashboard setActiveView={setActiveView} />}
           {activeView === 'profile' && <Profile />}
+          {activeView === 'documents' && <Documents />}
           {activeView === 'drives' && <PlacementDrives />}
           {activeView === 'settings' && <Settings />}
         </main>
