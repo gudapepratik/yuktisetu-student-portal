@@ -3,9 +3,13 @@ import { drivesApi } from '../api/drives';
 import { useToast } from '../components/Toast';
 import { Modal } from '../components/Modal';
 import {
-  Briefcase, Building2, MapPin, CalendarClock, IndianRupee, Users,
+  Briefcase, Building2, MapPin, CalendarClock, IndianRupee,
   CheckCircle2, XCircle, AlertTriangle, ExternalLink, Info, RefreshCw,
 } from 'lucide-react';
+import { CodingChecks } from '../components/CodingChecks';
+import { DriveScore } from '../components/MyScores';
+import { parseDriveId, navigateTo } from '../utils/routes';
+import { formatDateTime } from '../utils/time';
 
 const TABS = [
   { id: 'open', label: 'Open' },
@@ -82,10 +86,47 @@ function formatMoney(min, max) {
 }
 
 function formatDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+  return formatDateTime(iso);
+}
+
+const LABEL = (v) => (v ? v.replaceAll('_', ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase()) : null);
+
+function formatRupees(v) {
+  return v == null ? null : `₹${Number(v).toLocaleString('en-IN')}`;
+}
+
+/**
+ * Every fact about the role the TnP entered, label and value, skipping only the
+ * ones that were left blank. The drive page shows all of it: a student should
+ * never have to ask the TnP what a field in the JD said.
+ */
+function roleFacts(d) {
+  const basis = d.packageBasis && d.packageBasis !== 'CTC' ? ` (${LABEL(d.packageBasis)})` : '';
+  const stipend = d.stipendAmount != null
+    ? `${formatRupees(d.stipendAmount)}${d.stipendPeriod === 'TOTAL' ? ' total' : ' / month'}`
+    : null;
+  let bond = null;
+  if (d.bondMonths === 0) bond = 'No bond';
+  else if (d.bondMonths != null || d.bondAmount != null) {
+    bond = [d.bondMonths != null ? `${d.bondMonths} months` : null, formatRupees(d.bondAmount)]
+      .filter(Boolean).join(', ');
+  }
+  const facts = [
+    ['Job type', LABEL(d.jobType)],
+    ['Work mode', LABEL(d.workMode)],
+    ['Package', formatMoney(d.ctcMin, d.ctcMax) ? formatMoney(d.ctcMin, d.ctcMax) + basis : null],
+    ['Stipend', stipend],
+    ['Internship duration', d.internshipDurationMonths != null ? `${d.internshipDurationMonths} months` : null],
+    ['PPO possible', d.ppoPossible ? 'Yes' : null],
+    ['Bond', bond],
+    ['Openings', d.vacancyCount != null ? String(d.vacancyCount) : null],
+    ['Locations', d.locations?.length ? d.locations.join('\n') : null],
+    ['Applications open', d.applicationOpensAt ? formatDate(d.applicationOpensAt) : null],
+    ['Applications close', formatDate(d.applicationDeadline)],
+    ['Drive date', d.driveDate ? formatDate(d.driveDate) : null],
+    ['Venue', d.driveVenue || null],
+  ];
+  return facts.filter(([, v]) => v !== null && v !== undefined && v !== '');
 }
 
 /**
@@ -102,7 +143,16 @@ function formatDate(iso) {
 export function PlacementDrives() {
   const { toast } = useToast();
 
-  const [tab, setTab] = useState('open');
+  // The tab (?tab=applied) and an open drive (/drives/42) live in the URL, so a
+  // refresh puts the student back on the same list and the same drive.
+  const [tab, setTabState] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    return TABS.some((t) => t.id === wanted) ? wanted : 'open';
+  });
+  const setTab = (id) => {
+    setTabState(id);
+    navigateTo(`/drives${id === 'open' ? '' : `?tab=${id}`}`, { replace: true });
+  };
   const [drives, setDrives] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -111,6 +161,29 @@ export function PlacementDrives() {
   const [busyId, setBusyId] = useState(null);
 
   useEffect(() => { fetchDrives(); }, [tab]);
+
+  // Reopen the drive named in the URL on first load.
+  useEffect(() => {
+    const id = parseDriveId(window.location.pathname);
+    if (id) openDetail(id);
+  }, []);
+
+  // Back/Forward between the list and a drive.
+  useEffect(() => {
+    const onPop = () => {
+      const id = parseDriveId(window.location.pathname);
+      if (id) openDetail(id, { push: false });
+      else { setDetail(null); setEligibility(null); }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const listUrl = () => `/drives${tab === 'open' ? '' : `?tab=${tab}`}`;
+  const closeDetail = () => {
+    setDetail(null);
+    navigateTo(listUrl(), { replace: true });
+  };
 
   const fetchDrives = async () => {
     setLoading(true);
@@ -125,7 +198,7 @@ export function PlacementDrives() {
     }
   };
 
-  const openDetail = async (postingId) => {
+  const openDetail = async (postingId, { push = true } = {}) => {
     try {
       const [d, e] = await Promise.all([
         drivesApi.getDrive(postingId),
@@ -133,8 +206,10 @@ export function PlacementDrives() {
       ]);
       setDetail(d);
       setEligibility(e);
+      if (push) navigateTo(`/drives/${postingId}`);
     } catch (err) {
       toast.error(err.message || 'Could not open this drive');
+      navigateTo(listUrl(), { replace: true });
     }
   };
 
@@ -143,7 +218,7 @@ export function PlacementDrives() {
     try {
       await drivesApi.applyToDrive(postingId);
       toast.success('Applied. You can withdraw any time before the deadline.');
-      setDetail(null);
+      closeDetail();
       await fetchDrives();
     } catch (err) {
       // ELIGIBILITY_CHANGED carries the live reasons in its message — the student
@@ -159,7 +234,7 @@ export function PlacementDrives() {
     try {
       await drivesApi.withdrawApplication(postingId);
       toast.info('Application withdrawn.');
-      setDetail(null);
+      closeDetail();
       await fetchDrives();
     } catch (err) {
       toast.error(err.message || 'Could not withdraw your application');
@@ -180,6 +255,8 @@ export function PlacementDrives() {
           attached, so there is nothing to fill in.
         </p>
       </div>
+
+      <CodingChecks />
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', alignItems: 'center' }}>
         {TABS.map((t) => (
@@ -260,6 +337,12 @@ export function PlacementDrives() {
                   <button className="btn btn-ghost btn-sm" onClick={() => openDetail(d.postingId)}>
                     <Info size={12} /> Details
                   </button>
+                  {d.underReReview && (
+                    <span className="badge badge-warning" style={{ marginLeft: 'auto' }}
+                          title="You were shortlisted, then the TnP reopened applications. The shortlist will be worked out again after the new deadline.">
+                      Under re-review
+                    </span>
+                  )}
                   {applied ? (
                     <button
                       className="btn btn-secondary btn-sm"
@@ -292,7 +375,7 @@ export function PlacementDrives() {
       )}
 
       {/* ---------------- Detail ---------------- */}
-      <Modal isOpen={!!detail} onClose={() => setDetail(null)} title={detail?.title || ''} wide>
+      <Modal isOpen={!!detail} onClose={closeDetail} title={detail?.title || ''} wide>
         {detail && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
@@ -321,26 +404,24 @@ export function PlacementDrives() {
               </div>
             )}
 
-            <div className="form-grid">
+            {detail.responsibilities && (
               <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Package</div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                  {formatMoney(detail.ctcMin, detail.ctcMax) || '—'}
-                </div>
+                <div className="profile-section-title">Responsibilities</div>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                  {detail.responsibilities}
+                </p>
               </div>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Openings</div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                  <Users size={12} style={{ verticalAlign: '-2px' }} /> {detail.vacancyCount ?? '—'}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Applications close</div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>{formatDate(detail.applicationDeadline)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Drive date</div>
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>{formatDate(detail.driveDate)}</div>
+            )}
+
+            <div>
+              <div className="profile-section-title">Role at a glance</div>
+              <div className="form-grid">
+                {roleFacts(detail).map(([label, value]) => (
+                  <div key={label}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'pre-wrap' }}>{value}</div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -367,6 +448,22 @@ export function PlacementDrives() {
               </div>
             )}
 
+            {detail.underReReview && (
+
+              <div className="alert alert-warning" style={{ display: 'block', fontSize: '13px', marginBottom: '12px', lineHeight: 1.55 }}>
+
+                <strong>Under re-review.</strong> You were shortlisted for this drive, then the TnP extended the deadline and
+
+                reopened applications. Your application stands; the shortlist will be worked out again after the new
+
+                deadline, and you will be told the result.
+
+              </div>
+
+            )}
+
+            <DriveScore postingId={detail.postingId} />
+
             {eligibility && !eligibility.eligible && (
               <div className="alert alert-danger">
                 <div style={{ fontWeight: 600, marginBottom: '6px' }}>You cannot apply to this drive</div>
@@ -377,7 +474,7 @@ export function PlacementDrives() {
             )}
 
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setDetail(null)}>Close</button>
+              <button className="btn btn-ghost" onClick={closeDetail}>Close</button>
               {detail.myApplicationStatus === 'APPLIED' ? (
                 <button className="btn btn-secondary"
                         disabled={!detail.applyOpen || busyId === detail.postingId}

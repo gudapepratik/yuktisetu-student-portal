@@ -35,4 +35,27 @@ export const drivesApi = {
     apiRequest(`/api/drive/postings/${postingId}/apply`, { method: 'DELETE' }),
 
   getMyApplications: () => apiRequest('/api/drive/applications'),
+
+  /**
+   * Coding profiles that could not be read for a drive the student applied to,
+   * and what happened next. Usually { items: [] }.
+   */
+  getCodingChecks: () => apiRequest('/api/drive/coding-checks'),
+
+  /**
+   * One re-check per platform, before the deadline. The handle may be the same
+   * or corrected; a correction is saved to the profile and re-read for every
+   * open drive waiting on it. Returns the refreshed checks.
+   */
+  recheckCodingHandle: (platform, handle) =>
+    apiRequest('/api/drive/coding-checks/recheck', {
+      method: 'POST',
+      body: JSON.stringify({ platform, handle }),
+    }),
+
+  /**
+   * The student's composite score per drive, with its breakdown. Empty unless
+   * the TnP has switched score visibility on and the drive's shortlist is out.
+   */
+  getMyScores: () => apiRequest('/api/drive/my-scores'),
 };

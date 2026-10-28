@@ -18,6 +18,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { todayIst } from '../utils/time';
 import { PacmanLoader } from '../components/PacmanLoader';
 
 // Admin-set academic fields are shown faded when unset and full-contrast
@@ -271,7 +272,7 @@ export function Profile() {
                     className="form-control"
                     value={formData.dateOfBirth}
                     onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={todayIst()}
                   />
                 </div>
                 <div className="form-group">
@@ -459,6 +460,11 @@ export function Profile() {
                   <Plus size={14} /> Add Profile
                 </button>
               </div>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '0 0 10px', lineHeight: 1.5 }}>
+                Only <strong>Codeforces</strong> and <strong>LeetCode</strong> profiles are read and used when drives
+                rank applicants. Profiles on other platforms (CodeChef, HackerRank and others) are shown to the TnP but
+                not ranked; if they are your only ones, your coding is left out of the ranking rather than counted as zero.
+              </p>
               <div className="array-items">
                 {formData.codingProfiles.map((profile, index) => (
                   <div key={index} className="array-item">

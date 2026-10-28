@@ -2,6 +2,7 @@ import React from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { NotificationBell } from './NotificationBell';
 
 export function Header() {
   const { user } = useAuth();
@@ -29,6 +30,8 @@ export function Header() {
       </div>
 
       <div className="header-right">
+        <NotificationBell />
+
         <button
           className="btn btn-ghost btn-sm"
           onClick={toggleTheme}

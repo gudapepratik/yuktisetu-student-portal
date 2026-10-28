@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { documentsApi, DOC_TYPES } from '../api/documents';
 import { useToast } from '../components/Toast';
+import { formatDate as timeFormatDate } from '../utils/time';
 import { PacmanLoader } from '../components/PacmanLoader';
 import {
   FileText, Upload, Trash2, ExternalLink, Star, AlertCircle, ShieldAlert,
@@ -21,9 +22,7 @@ function formatSize(bytes) {
 
 function formatDate(instant) {
   if (!instant) return '—';
-  return new Date(instant).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
+  return timeFormatDate(instant);
 }
 
 export function Documents() {

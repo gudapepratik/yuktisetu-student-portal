@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { PacmanLoader } from '../components/PacmanLoader';
+import { CodingChecks } from '../components/CodingChecks';
+import { MyScoresPanel } from '../components/MyScores';
 
 export function Dashboard({ setActiveView }) {
   const { user } = useAuth();
@@ -98,6 +100,9 @@ export function Dashboard({ setActiveView }) {
           Manage your placement profile, track drives, and showcase your achievements.
         </p>
       </div>
+
+      <CodingChecks />
+      <MyScoresPanel />
 
       {/* Metric Cards Grid */}
       <div className="stats-grid">

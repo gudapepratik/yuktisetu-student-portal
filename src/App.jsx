@@ -11,6 +11,7 @@ import { Documents } from './pages/Documents';
 import { PlacementDrives } from './pages/PlacementDrives';
 import { Settings } from './pages/Settings';
 import { AcceptInvite } from './pages/AcceptInvite';
+import { viewFromPath, pathForView, navigateTo } from './utils/routes';
 import './styles/student.css';
 
 /**
@@ -28,8 +29,34 @@ function isInviteLink() {
 
 function MainApp() {
   const { isAuthenticated, loading } = useAuth();
-  const [activeView, setActiveView] = useState(() => (isInviteLink() ? 'accept-invite' : 'dashboard'));
+  // The address bar decides the starting screen, so a refresh returns to the same
+  // page instead of the dashboard. Invite links win; unknown paths fall back to
+  // the dashboard.
+  const [activeView, setActiveView] = useState(() => {
+    if (isInviteLink()) return 'accept-invite';
+    return viewFromPath(window.location.pathname) ?? 'dashboard';
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Screen -> address bar. Navigation pushes a history entry, so Back works.
+  // Screens with no URL of their own (login, accept-invite) leave it alone, and
+  // the drives screen manages its own /drives/{id} sub-path.
+  useEffect(() => {
+    const target = pathForView(activeView);
+    if (!target) return;
+    if (activeView === 'drives' && window.location.pathname.startsWith('/drives')) return;
+    navigateTo(target);
+  }, [activeView]);
+
+  // Address bar -> screen, for the browser's Back and Forward buttons.
+  useEffect(() => {
+    const onPop = () => {
+      if (isInviteLink()) return;
+      setActiveView(viewFromPath(window.location.pathname) ?? 'dashboard');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   // Activating an invite comes BEFORE the auth and loading gates -- see
   // isInviteLink above. The invited person is not whoever happens to be signed
