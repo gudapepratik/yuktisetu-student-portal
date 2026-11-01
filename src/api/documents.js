@@ -19,6 +19,9 @@ export const documentsApi = {
   },
 
   remove: (id) => apiRequest(`/api/user/documents/${id}`, { method: 'DELETE' }),
+
+  /** Use this file for new applications; earlier applications keep the file they were sent with. */
+  makePrimary: (id) => apiRequest(`/api/user/documents/${id}/primary`, { method: 'POST' }),
 };
 
 /** Mirrors StudentDocumentType on the backend; the order is the order shown. */

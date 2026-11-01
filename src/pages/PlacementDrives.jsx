@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CodingChecks } from '../components/CodingChecks';
 import { DriveScore } from '../components/MyScores';
+import { MyRounds } from '../components/MyRounds';
 import { parseDriveId, navigateTo } from '../utils/routes';
 import { formatDateTime } from '../utils/time';
 
@@ -461,6 +462,8 @@ export function PlacementDrives() {
               </div>
 
             )}
+
+            <MyRounds rounds={detail.rounds} status={detail.myApplicationStatus} />
 
             <DriveScore postingId={detail.postingId} />
 

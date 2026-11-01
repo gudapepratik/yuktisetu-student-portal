@@ -84,6 +84,16 @@ export function Documents() {
     }
   };
 
+  const makePrimary = async (doc) => {
+    try {
+      await documentsApi.makePrimary(doc.id);
+      setDocuments((prev) => prev.map((d) => (d.docType === doc.docType ? { ...d, primary: d.id === doc.id } : d)));
+      toast.success(`${doc.fileName} will be used for your new applications.`);
+    } catch (err) {
+      toast.error(err.message || 'Could not change your primary document');
+    }
+  };
+
   if (loading) return <PacmanLoader />;
 
   const primaryResume = documents.find((d) => d.docType === 'RESUME' && d.primary);
@@ -93,8 +103,9 @@ export function Documents() {
       <div className="page-header">
         <h1 className="page-title">My Documents</h1>
         <p className="page-subtitle">
-          Your resume and certificates. Whichever resume is marked primary is the one attached to
-          every drive you apply to.
+          Your resume and certificates. The resume marked with a star is attached to every drive you
+          apply to from now on; use "Use for applications" to switch. A file you already applied with
+          can't be deleted, because the placement team still uses it.
         </p>
       </div>
 
@@ -196,7 +207,13 @@ export function Documents() {
                         Open <ExternalLink size={11} />
                       </a>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {!d.primary && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => makePrimary(d)}
+                                title="Attach this file to the applications you make from now on">
+                          <Star size={13} /> Use for applications
+                        </button>
+                      )}
                       <button className="btn btn-ghost btn-sm" onClick={() => remove(d)} title="Remove">
                         <Trash2 size={13} />
                       </button>

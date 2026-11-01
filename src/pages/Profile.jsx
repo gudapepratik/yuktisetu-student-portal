@@ -342,7 +342,7 @@ export function Profile() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Graduation Year</label>
+                  <label className="form-label">Batch (passing-out year)</label>
                   <input
                     type="text"
                     className="form-control"
@@ -834,7 +834,7 @@ export function Profile() {
                 <div className="profile-meta" style={{ fontSize: '11px' }}>
                   {profile?.branch && <span><Award size={12} /> {profile.branch}</span>}
                   {profile?.cgpa && <span><TrendingUp size={12} /> CGPA: {profile.cgpa}</span>}
-                  {profile?.graduationYear && <span><GraduationCap size={12} /> {profile.graduationYear}</span>}
+                  {profile?.graduationYear && <span><GraduationCap size={12} /> Batch {profile.graduationYear}</span>}
                 </div>
               </div>
             </div>

@@ -244,7 +244,7 @@ export function Dashboard({ setActiveView }) {
                 )}
                 {profile.graduationYear && (
                   <span>
-                    <Award size={14} /> Class of {profile.graduationYear}
+                    <Award size={14} /> Batch {profile.graduationYear}
                   </span>
                 )}
               </div>
