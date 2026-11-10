@@ -9,6 +9,7 @@ import {
 import { CodingChecks } from '../components/CodingChecks';
 import { DriveScore } from '../components/MyScores';
 import { MyRounds } from '../components/MyRounds';
+import { MyOffers } from '../components/MyOffers';
 import { parseDriveId, navigateTo } from '../utils/routes';
 import { formatDateTime } from '../utils/time';
 
@@ -58,12 +59,13 @@ const FAILURE_TEXT = {
   COCUBES_BELOW_MIN: 'Your CoCubes score is below the minimum.',
   LIVE_INTERNSHIP_HELD: 'You already hold an internship offer, so you cannot sit for another internship drive.',
   ALREADY_PLACED: 'You are already placed, and this drive is not open to placed students.',
-  PLACED_UPLIFT_NOT_MET: 'This drive does not pay enough above your current offer to qualify.',
+  PLACED_UPLIFT_NOT_MET: 'You are already placed, and this drive does not pay more than your best offer plus the uplift the TnP set for it.',
   INTERN_UPLIFT_NOT_MET: 'This drive’s stipend does not clear the required uplift over your current internship.',
   PENDING_OFFER_HELD: 'You are holding an offer you have not yet responded to.',
   MAX_LIVE_OFFERS_REACHED: 'You already hold the maximum number of offers this drive allows.',
   COOLING_OFF_ACTIVE: 'You accepted another offer too recently.',
   ADMIN_DENIED: 'The TnP has not cleared you for this drive.',
+  LAST_OFFER_DECLINED: 'This drive is not open to students who declined or withdrew from their last offer.',
   ADMIN_DECISION_PENDING: 'The TnP still needs to review whether you may sit for this drive.',
   NEEDS_REVIEW: 'Some of your details need to be checked by the TnP first.',
 };
@@ -462,6 +464,8 @@ export function PlacementDrives() {
               </div>
 
             )}
+
+            <MyOffers postingId={detail.postingId} compact />
 
             <MyRounds rounds={detail.rounds} status={detail.myApplicationStatus} />
 

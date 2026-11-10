@@ -89,6 +89,40 @@ async function parseResponse(response, endpoint) {
   return envelope ? envelope.data : body;
 }
 
+/**
+ * fetch, retried while a service restarts (2026-11-01).
+ *
+ * A 503 SERVICE_RECOVERING means the server is still picking up work from before
+ * the restart and did not touch this request, so any method is safe to send
+ * again. A 502/504 or a dropped connection may or may not have reached it, so
+ * only reads are retried there -- re-sending a mark or a publish blind could do
+ * it twice. Waits 1, 2, 4, 4, 4 s: about 15 s in all, then the error surfaces.
+ */
+const RETRY_DELAYS_MS = [1000, 2000, 4000, 4000, 4000];
+
+async function fetchWithRestartRetry(endpoint, config) {
+  const method = (config.method || 'GET').toUpperCase();
+  const idempotent = method === 'GET' || method === 'HEAD';
+  for (let attempt = 0; ; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(endpoint, config);
+    } catch (networkError) {
+      if (!idempotent || attempt >= RETRY_DELAYS_MS.length) throw networkError;
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      continue;
+    }
+    const recovering = response.status === 503;
+    const gateway = response.status === 502 || response.status === 504;
+    if ((recovering || (gateway && idempotent)) && attempt < RETRY_DELAYS_MS.length) {
+      const after = Number(response.headers.get('Retry-After'));
+      await new Promise((r) => setTimeout(r, after > 0 ? after * 1000 : RETRY_DELAYS_MS[attempt]));
+      continue;
+    }
+    return response;
+  }
+}
+
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('ys_access_token');
 
@@ -104,7 +138,7 @@ export async function apiRequest(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(endpoint, { ...options, headers });
+  const response = await fetchWithRestartRetry(endpoint, { ...options, headers });
 
   const isAuthenticatedCall = !PUBLIC_ENDPOINTS.includes(endpoint);
   if (response.status === 401 && isAuthenticatedCall && !options._retry) {

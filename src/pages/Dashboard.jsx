@@ -17,6 +17,7 @@ import { useToast } from '../components/Toast';
 import { PacmanLoader } from '../components/PacmanLoader';
 import { CodingChecks } from '../components/CodingChecks';
 import { MyScoresPanel } from '../components/MyScores';
+import { MyOffers } from '../components/MyOffers';
 
 export function Dashboard({ setActiveView }) {
   const { user } = useAuth();
@@ -102,6 +103,7 @@ export function Dashboard({ setActiveView }) {
       </div>
 
       <CodingChecks />
+      <MyOffers />
       <MyScoresPanel />
 
       {/* Metric Cards Grid */}
